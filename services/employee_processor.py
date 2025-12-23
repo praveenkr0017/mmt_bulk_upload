@@ -11,7 +11,10 @@ from concurrent.futures import (
 )
 from bulk_upload.db import (
     fetch_from_db,
-    insert_into_db
+    insert_into_db,
+    update_job_progress,
+    mark_job_completed,
+    mark_job_failed
 )
 from bulk_upload.models import (
     MMTEmployeePayload,
@@ -21,22 +24,13 @@ from bulk_upload.models import (
 )
 
 
-def process_record(row) -> list:
+def process_record(row) -> tuple[bool, list]:
 
     """Process a single record and insert into DB.
     Returns a list of failed records (empty if successful)."""
 
     # Preload Employees emp_id and emp_uuid mapping 
     # Should get refresh as new employee is added
-    global df_employees
-    df_employees = fetch_from_db(
-        *DB_CRED,
-        table=EMPLOYEES_PERSONAL_DETAILS
-    )
-    df_employees = df_employees.select([
-        'emp_id',
-        'emp_uuid'
-    ])
 
     failed_records = []
         # print(json.dumps(row,indent=4))
@@ -187,7 +181,7 @@ def process_record(row) -> list:
     if _error:
         row.update({'Error': ';\n'.join(_error)})
         failed_records.append(row)
-        return failed_records
+        return False, failed_records
     # 1/0
     # --------------------- DB INSERTIONS ----------------------
     
@@ -263,8 +257,8 @@ def process_record(row) -> list:
     try:
         emp_id_DB = insert_into_db(
                     pl.DataFrame([db_record_mmt_employees]),
+                    EMPLOYEES_PERSONAL_DETAILS,
                     *DB_CRED,
-                    table=EMPLOYEES_PERSONAL_DETAILS
                 )
         print(f"✅ Inserted employee ID: {emp_id_DB}")
     except Exception as e:
@@ -371,8 +365,8 @@ def process_record(row) -> list:
     try:
         emp_onboarded_id_DB = insert_into_db(
                     pl.DataFrame([db_record_emp_onboarded_companyinfo]),
+                    ONBOARDED_COMPANYINFO,
                     *DB_CRED,
-                    table=ONBOARDED_COMPANYINFO,
                 )
         print(f"✅ Inserted employee onboarded company info ID: {emp_onboarded_id_DB}")
     except Exception as e:
@@ -392,8 +386,8 @@ def process_record(row) -> list:
     try:
         emp_salary_allo_id = insert_into_db(
                     pl.DataFrame([db_record_mmt_salary_allocations]),
+                    EMPLOYEES_SALARY_ALLOCATIONS,
                     *DB_CRED,
-                    table=EMPLOYEES_SALARY_ALLOCATIONS
         )
         print(f"✅ Inserted employee salary allocation ID: {emp_salary_allo_id}")
     except Exception as e:
@@ -408,11 +402,12 @@ def process_record(row) -> list:
     if _error:
         row.update({'Error': _error})
         failed_records.append(row)
+        return False, failed_records 
 
-    return failed_records
+    return True, failed_records
 
 
-def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
+def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
     """
     Main callable function for FastAPI
     Returns: (success: bool, failed_df: pl.DataFrame | None)
@@ -424,8 +419,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Sub-Designations
     df_subDesignations = fetch_from_db(
-        *DB_CRED,
-        table=SUB_DESIGNATIONS
+        SUB_DESIGNATIONS,
+        *DB_CRED
     )
     df_subDesignations = df_subDesignations.select([
         'id',
@@ -440,8 +435,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Regions
     df_regions = fetch_from_db(
-        *DB_CRED,
-        table=REGION
+        REGION,
+        *DB_CRED
     )
     df_regions = df_regions.select([
         'id',
@@ -457,8 +452,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Branches
     df_branch = fetch_from_db(
-        *DB_CRED,
-        table=BRANCH
+        BRANCH,
+        *DB_CRED
     )
     df_branch = df_branch.select([
         'branch_id',
@@ -474,8 +469,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Locations
     df_locations = fetch_from_db(
-        *DB_CRED,
-        table=LOCATION
+        LOCATION,
+        *DB_CRED
     )
     df_locations = df_locations.select([
         'location_id',
@@ -491,8 +486,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Zones
     df_zones = fetch_from_db(
-        *DB_CRED,
-        table=ZONE_MASTER
+        ZONE_MASTER,
+        *DB_CRED
     )
     df_zones = df_zones.select([
         'id',
@@ -508,8 +503,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Departments
     df_departments = fetch_from_db(
-        *DB_CRED,
-        table=DEPARTMENT
+        DEPARTMENT,
+        *DB_CRED
     )
     df_departments = df_departments.select([
         'dept_id',
@@ -526,8 +521,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
     # Functional Roles
     global df_functionalRoles
     df_functionalRoles = fetch_from_db(
-        *DB_CRED,       
-        table=FUNCTIONAL_ROLES
+        FUNCTIONAL_ROLES,
+        *DB_CRED   
     )
     df_functionalRoles = df_functionalRoles.select([ 
         'id',
@@ -544,14 +539,14 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
     # Preload Qualification Slabs and WorkEx Slabs
     global df_workExSlab
     df_workExSlab = fetch_from_db(
-        *DB_CRED,
-        table=SLAB_MASTER
+        SLAB_MASTER,
+        *DB_CRED
     )
 
     global df_qualification
     df_qualification = fetch_from_db(
-        *DB_CRED,
-        table=QUALIFICATION
+        QUALIFICATION,
+        *DB_CRED
     )
     df_qualification = df_qualification.select(
         "id", "slab_name", "fk_designation_id"
@@ -565,8 +560,8 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
 
     # Designations
     df_designation = fetch_from_db(
-        *DB_CRED,
-        table=DG_DESIGNATIONS
+        DG_DESIGNATIONS,
+        *DB_CRED
     )
     df_designation = df_designation['design_id','designation_name']
     global df_designationMapping
@@ -575,7 +570,16 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
         df_designation['design_id'].to_list()
     ))
 
-    df = pl.read_excel(file_path, sheet_name=None)
+    # Employee Table
+    global df_employees
+    df_employees = fetch_from_db(
+        EMPLOYEES_PERSONAL_DETAILS,
+        *DB_CRED
+    ).select(['emp_id', 'emp_uuid'])
+
+
+    # df = pl.read_excel(file_path, sheet_name=None)
+    df = pl.read_excel(file_path)
 
     uniqueQualificationsInFile = list(set(df['scale_considered'].unique().to_list()))
     uniqueQualificationsInFile = [i.strip().upper() for i in uniqueQualificationsInFile]
@@ -594,21 +598,55 @@ def process_excel(file_path: str) -> tuple[bool, pl.DataFrame]:
     # 1/0
     # ---------------- PROCESS RECORDS ----------------
     all_failed_records = []
-
+    BATCH_UPDATE_SIZE = 10  
+    processed = 0
+    # failed_batch_count = 0
     start = time.time()
 
     print(f'[Info] Using {BATCH_WORKERS} workers.')
-    with ThreadPoolExecutor(max_workers=BATCH_WORKERS) as executor:
-        futures = [
-            executor.submit(process_record, row)
-            for row in df.iter_rows(named=True)
-        ]
 
-        for future in as_completed(futures):
-            failed = future.result()
-            all_failed_records.extend(failed)
+    try:
+        with ThreadPoolExecutor(max_workers=BATCH_WORKERS) as executor:
+            futures = [
+                executor.submit(process_record, row)
+                for row in df.iter_rows(named=True)
+            ]
+
+            for future in as_completed(futures):
+                success, failed = future.result()
+
+                processed += 1
+
+                if not success:
+                    all_failed_records.extend(failed)
+
+                # 🔹 batch DB update
+                if processed % BATCH_UPDATE_SIZE == 0:
+                    update_job_progress(
+                        job_id,
+                        BATCH_UPDATE_SIZE,
+                        *DB_CRED
+                    )
+
+        # ✅ FLUSH remaining records ONCE (outside loop)
+        remaining = processed % BATCH_UPDATE_SIZE
+        if remaining:
+            update_job_progress(
+                job_id,
+                remaining,
+                *DB_CRED
+            )
+
+        # ✅ Mark job completed ONCE
+        mark_job_completed(job_id, *DB_CRED)
+
+    except Exception as e:
+        # ❗ VERY IMPORTANT
+        mark_job_failed(job_id, *DB_CRED)
+        raise   # re-raise so API knows something went wrong
 
     end = time.time()
+
 
     print(f"Time taken: {end - start:.2f}s")
     print("Total Records Failed:", len(all_failed_records))

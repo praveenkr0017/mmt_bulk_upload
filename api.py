@@ -14,6 +14,8 @@ from fastapi.responses import (
 )
 # from .services.employee_processor import process_excel
 from bulk_upload.services.employee_processor import process_excel
+from bulk_upload.db import create_job_entry
+from bulk_upload.config import DB_CRED
 
 app = FastAPI(title="Employee Upload API")
 
@@ -31,13 +33,38 @@ async def upload_employees(file: UploadFile = File(...)):
         temp_path = tmp.name
 
     try:
-        # Process Excel
-        success, failed_df = process_excel(temp_path)
+        # 🔹 Step 1: read excel to get total rows
+        import polars as pl
+        df = pl.read_excel(temp_path)
+        total_records = df.height
+        print(f"[Check] : Total Records found for insertion : {total_records}")
+        del df
+
+         # 🔹 Step 2: insert job row (INITIAL)
+        try:
+            create_job_entry(
+                job_id,
+                total_records,
+                file.filename,
+                *DB_CRED
+            )
+            print(f"[Check] : ✅ Job id created `{job_id}`.")
+        except Exception as e:
+            print(f"[JobIdEntryError] : ❌ Failed to create job_id `{job_id}` entry in DB due to `{e}`")
+
+        #  Process file (job_id passed)
+        success, failed_df = process_excel(
+            file_path=temp_path,
+            job_id=job_id
+        )
 
         if success:
             return JSONResponse(
                 status_code=200,
-                content={"message": "All records inserted successfully"}
+                content={
+                    "message": "All records inserted successfully",
+                    "job_id": job_id
+                }
             )
 
         # If failed → create Excel

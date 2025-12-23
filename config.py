@@ -25,7 +25,8 @@ DB_HOST=os.getenv("DB_HOST")
 DB_USER=os.getenv("DB_USER")
 DB_PASSWORD=os.getenv("DB_PASSWORD")
 DATABASE=os.getenv("DATABASE")
-DB_CRED = DB_HOST, DB_USER, DB_PASSWORD, DATABASE
+DB_PORT=os.getenv('DB_PORT')
+DB_CRED = DB_HOST, DB_USER, DB_PASSWORD, DATABASE, int(DB_PORT)
 
 # Table Names
 DG_DESIGNATIONS = 'dg_designations'
@@ -47,6 +48,7 @@ EMPLOYEES_PERSONAL_DETAILS = 'mmt_employees'
 EMPLOYEES_QUALIFICATIONS = 'mmt_emp_qualifications'
 EMPLOYEES_WORKEX = 'mmt_emp_work_experiences'
 EMPLOYEES_SALARY_ALLOCATIONS = 'mmt_salary_allocations'   
+UPLOAD_PROCESS_LOGS = 'mmt_uploadprocess_logs'
 
 # Mappings
 DESIGNATION_MAPP = {
