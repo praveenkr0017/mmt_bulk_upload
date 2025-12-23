@@ -28,6 +28,9 @@ DATABASE=os.getenv("DATABASE")
 DB_PORT=os.getenv('DB_PORT')
 DB_CRED = DB_HOST, DB_USER, DB_PASSWORD, DATABASE, int(DB_PORT)
 
+# mmt_uploadprocess_logs updation
+BATCH_UPDATE_SIZE = int(os.getenv("BATCH_UPDATE_SIZE"))
+
 # Table Names
 DG_DESIGNATIONS = 'dg_designations'
 FUNCTIONAL_ROLES = 'mmt_functional_roles_master'

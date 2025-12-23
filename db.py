@@ -39,7 +39,7 @@ def fetch_from_db(
 
     conn.close()
 
-    # 🔥 Normalize datetime → string
+    # Normalize datetime → string
     for row in rows:
         for k, v in row.items():
             if isinstance(v, (datetime.datetime, datetime.date)):

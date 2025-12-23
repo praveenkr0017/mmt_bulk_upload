@@ -31,15 +31,14 @@ def process_record(row) -> tuple[bool, list]:
 
     # Preload Employees emp_id and emp_uuid mapping 
     # Should get refresh as new employee is added
+    # Employee Table
+    global df_employees
+    df_employees = fetch_from_db(
+        EMPLOYEES_PERSONAL_DETAILS,
+        *DB_CRED
+    ).select(['emp_id', 'emp_uuid'])
 
     failed_records = []
-        # print(json.dumps(row,indent=4))
-        # continue
-
-        # empId = row['emp_id']
-        # designation = row['new_hierarchical_designation'].strip()
-        # qualification = row['scale_considered'].strip().upper()
-        # salary_slab = row['final_slab_considered'].strip().upper()
 
     # Mandatory fields check if those are null or not
     _error = []
@@ -55,31 +54,24 @@ def process_record(row) -> tuple[bool, list]:
         except Exception:
             record[field] = None
 
-    print(record)
-
     empId = record['emp_id']
     designation = record['new_hierarchical_designation']
     qualification = record['scale_considered']
     salary_slab = record['final_slab_considered']
 
-    print(f'qualification           : {qualification}')
     if qualification not in uniqueQualificationsInDB:
         qualification = QUALIFICATION_MAPP.get(qualification, qualification)
-        print(f'qualification revised   : {qualification}')
-    print(f'designation             : {designation}')
 
     if designation not in df_designationMapping.keys():
         designation = DESIGNATION_MAPP.get(designation,designation)
-        print(f'designation revised     : {designation}')
+
     _designation_id = df_designationMapping.get(designation)
     if _designation_id is None: _error.append(f"[designationIdError] : Designation id not found corresponding to designation `{designation}` ")
-    print(f'designation_id          : {_designation_id}')
 
     if record['sub_designation']:
         _sub_designation_id = df_subDesignationsMapping.get(record['sub_designation'], None)
     else:
         _sub_designation_id = None
-    print(f'sub_designation_id      : {_sub_designation_id}')
 
     if not record['last_name']: record['last_name'] = ''
     if not record['remarks_salary_allocation']: record['remarks_salary_allocation'] = ''
@@ -96,16 +88,7 @@ def process_record(row) -> tuple[bool, list]:
         )
     except Exception as e:
         qualificationSlabId = None
-        # row.update({'Error': f'Error in qualificationSlabID : {e}'})
         _error.append(f'[qualificationSlabIdError] : No id found corresponding to qualification `{qualification}` & designationId `{_designation_id}` -> {e}')
-        # failed_records.append(row)
-        # return failed_records
-        # continue
-
-    print(f"qualificationSlabId     : {qualificationSlabId}")
-
-    print(f'salary_slab             : {salary_slab}')
-    print(salary_slab in uniqueGradeSlabsInDB)
     
     try :
         workExSlabId = (
@@ -120,19 +103,8 @@ def process_record(row) -> tuple[bool, list]:
         )
     except Exception as e:
         workExSlabId = None
-        # row.update({'Error': f'Error in workExSlabID : {e}'})
         _error.append(f'[workExSlabIdError] : No id found corresponding to grade `{salary_slab}`,fk_designation_id `{_designation_id}` & fk_qualification_slab `{qualificationSlabId}` -> {e}')
-        # failed_records.append(row)
-        # return failed_records
-        # continue
 
-    print(f"workExSlabId            : {workExSlabId}")
-
-    # if record['national_head_emp_id'] is None: 
-    #     row.update({'Error': f'nationalHeadEmpId not provided'})
-    #     failed_records.append(row)
-    #     return failed_records
-    #     # continue
     try:
         nationalHeadEmpId = (
                     df_employees
@@ -142,21 +114,10 @@ def process_record(row) -> tuple[bool, list]:
                     .select("emp_id")
                     .to_series()[0]
         )
-        print(nationalHeadEmpId) 
     except Exception as e:
         nationalHeadEmpId = None
-        # row.update({'Error': f'Error in nationalHeadEmpId : {e}'})
         _error.append(f"[nationalHeadEmpIdError] : No id found corresponding to emp_id `{record['national_head_emp_id']}` -> {e}")
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
-    print(f"nationalHeadEmpId       : {nationalHeadEmpId}")
 
-    # if record['country_head_emp_id'] is None: 
-    #     row.update({'Error': f'countryHeadEmpId not provided'})
-    #     failed_records.append(row)
-    #     return failed_records
-    #     # continue
     try:
         countryHeadEmpId = (
                     df_employees
@@ -168,21 +129,14 @@ def process_record(row) -> tuple[bool, list]:
         )
     except Exception as e:
         countryHeadEmpId = None
-        # row.update({'Error': f'Error in countryHeadEmpId : {e}'})
         _error.append(f"[countryHeadEmpIdError] : No id found corresponding to emp_id `{record['country_head_emp_id']}` -> {e}")
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
-    print(f"countryHeadEmpId        : {countryHeadEmpId}\n")
-    
-    # return []
 
     # First CheckPoint of errors for a record
     if _error:
         row.update({'Error': ';\n'.join(_error)})
         failed_records.append(row)
         return False, failed_records
-    # 1/0
+
     # --------------------- DB INSERTIONS ----------------------
     
     # --------- mmt_employees ---------
@@ -244,15 +198,10 @@ def process_record(row) -> tuple[bool, list]:
     try:
         record_mmt_employees = MMTEmployeePayload(**payload_mmt_Employees)
     except Exception as e:
-        print(f"Error in MMTEmployeePayload creation: {e}")
-        # row.update({'Error': f"Error in MMTEmployeePayload creation: {e}"})
+        print(f"❌ Error in MMTEmployeePayload creation: {e}")
         _error.append(f'[ValidationError] : Error in MMTEmployeePayload creation : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
 
     db_record_mmt_employees = record_mmt_employees.model_dump(exclude_none=True)
-    print(db_record_mmt_employees)
     
     try:
         emp_id_DB = insert_into_db(
@@ -262,12 +211,8 @@ def process_record(row) -> tuple[bool, list]:
                 )
         print(f"✅ Inserted employee ID: {emp_id_DB}")
     except Exception as e:
-        print(f"Insertion into `{EMPLOYEES_PERSONAL_DETAILS}` failed: {e}")
-        # row.update({'Error': f"Insertion into `{EMPLOYEES_PERSONAL_DETAILS}` failed: {e}"})
+        print(f"❌ Insertion into `{EMPLOYEES_PERSONAL_DETAILS}` failed: {e}")
         _error.append(f'[DBInsertionError] : Insertion into `{EMPLOYEES_PERSONAL_DETAILS}` failed : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
 
     # --- emp_onboarded_companyinfo ---
 
@@ -340,27 +285,19 @@ def process_record(row) -> tuple[bool, list]:
     try:
         record_emp_onboarded_companyinfo = EmployeeOnboardingCreate(**payload_emp_onboarded_companyinfo)
     except Exception as e:
-        print(f"mmt_employee updated but Validation failed for {ONBOARDED_COMPANYINFO}: {e}")
-        # row.update({'Error': f"mmt_employee updated but Validation failed for {ONBOARDED_COMPANYINFO}: {e}"})
+        print(f"❌ mmt_employee updated but Validation failed for {ONBOARDED_COMPANYINFO}: {e}")
         _error.append(f'[ValidationError] : mmt_employee updated but Validation failed for {ONBOARDED_COMPANYINFO} : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
 
     try:
         record_mmt_salary_allocations = MMTSalaryAllocationPayload(**payload_mmt_salary_allocations)
     except Exception as e:
-        print(f"mmt_employee updated but Validation failed for {EMPLOYEES_SALARY_ALLOCATIONS}: {e}")
-        # row.update({'Error': f"mmt_employee updated but Validation failed for {EMPLOYEES_SALARY_ALLOCATIONS}: {e}"})
+        print(f"❌ mmt_employee updated but Validation failed for {EMPLOYEES_SALARY_ALLOCATIONS}: {e}")
         _error.append(f'[ValidationError] : mmt_employee updated but Validation failed for {EMPLOYEES_SALARY_ALLOCATIONS} : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
+
 
     # Insertion into emp_onboarded_companyinfo
 
     db_record_emp_onboarded_companyinfo = record_emp_onboarded_companyinfo.model_dump(exclude_none=True)
-    print(db_record_emp_onboarded_companyinfo)
 
     try:
         emp_onboarded_id_DB = insert_into_db(
@@ -370,18 +307,13 @@ def process_record(row) -> tuple[bool, list]:
                 )
         print(f"✅ Inserted employee onboarded company info ID: {emp_onboarded_id_DB}")
     except Exception as e:
-        print(f"Insertion into {ONBOARDED_COMPANYINFO} failed: {e}")
-        # row.update({'Error': f"Insertion into {ONBOARDED_COMPANYINFO} failed: {e}"})
+        print(f"❌ Insertion into {ONBOARDED_COMPANYINFO} failed: {e}")
         _error.append(f'[DBInsertionError] : Insertion into {ONBOARDED_COMPANYINFO} failed : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
 
     # Insertion into mmt_salary_allocations
 
     
     db_record_mmt_salary_allocations = record_mmt_salary_allocations.model_dump(exclude_none=True)
-    print(db_record_mmt_salary_allocations)
     
     try:
         emp_salary_allo_id = insert_into_db(
@@ -391,12 +323,8 @@ def process_record(row) -> tuple[bool, list]:
         )
         print(f"✅ Inserted employee salary allocation ID: {emp_salary_allo_id}")
     except Exception as e:
-        print(f"Insertion into `{EMPLOYEES_SALARY_ALLOCATIONS}` failed: {e}")
-        # row.update({'Error': f"Insertion into `{EMPLOYEES_SALARY_ALLOCATIONS}` failed: {e}"})
+        print(f"❌ Insertion into `{EMPLOYEES_SALARY_ALLOCATIONS}` failed: {e}")
         _error.append(f'[DBInsertionError] : Insertion into `{EMPLOYEES_SALARY_ALLOCATIONS}` failed : {e} ')
-        # failed_records.append(row)
-        # return failed_records
-        # # continue
     
     # Error Check Point 2
     if _error:
@@ -443,7 +371,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'rg_name'
     ])
     uniqueRegions = list(df_regions['rg_name'].unique())
-    # print(uniqueRegions)
+
     global df_regionsMapping
     df_regionsMapping = dict(zip(
         df_regions['rg_name'].to_list(),
@@ -460,7 +388,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'branch_name'
     ])
     uniqueBranches = list(df_branch['branch_name'].unique())
-    # print(uniqueBranches)
+
     global df_branchMapping
     df_branchMapping = dict(zip(
         df_branch['branch_name'].to_list(),
@@ -477,7 +405,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'location_name'
     ])
     uniqueLocations = list(df_locations['location_name'].unique())
-    # print(uniqueLocations)
+
     global df_locationsMapping
     df_locationsMapping = dict(zip(
         df_locations['location_name'].to_list(),
@@ -494,7 +422,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'rg_name'
     ])
     uniqueZones = list(df_zones['rg_name'].unique())
-    # print(uniqueZones)
+
     global df_zonesMapping
     df_zonesMapping = dict(zip(
         df_zones['rg_name'].to_list(),
@@ -511,7 +439,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'dept_name'
     ])  
     uniqueDepartments = list(df_departments['dept_name'].unique())
-    # print(uniqueDepartments)
+
     global df_deptMapping
     df_deptMapping = dict(zip(
         df_departments['dept_name'].to_list(),
@@ -529,7 +457,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         'role_name'
     ])
     uniqueFunctionalRoles = list(df_functionalRoles['role_name'].unique())
-    # print(uniqueFunctionalRoles)
+
     global df_funcRolesMapping
     df_funcRolesMapping = dict(zip(
         df_functionalRoles['role_name'].to_list(),
@@ -570,37 +498,24 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
         df_designation['design_id'].to_list()
     ))
 
-    # Employee Table
-    global df_employees
-    df_employees = fetch_from_db(
-        EMPLOYEES_PERSONAL_DETAILS,
-        *DB_CRED
-    ).select(['emp_id', 'emp_uuid'])
-
-
-    # df = pl.read_excel(file_path, sheet_name=None)
+    # Read Excel
     df = pl.read_excel(file_path)
 
     uniqueQualificationsInFile = list(set(df['scale_considered'].unique().to_list()))
     uniqueQualificationsInFile = [i.strip().upper() for i in uniqueQualificationsInFile]
     uniqueQualificationsInFile.sort()
-    # print(uniqueQualificationsInFile)
 
     global uniqueQualificationsInDB
     uniqueQualificationsInDB = df_qualification['slab_name'].unique().to_list()
     uniqueQualificationsInDB.sort()
-    # print(uniqueQualificationsInDB)
 
     global uniqueGradeSlabsInDB
     uniqueGradeSlabsInDB = df_workExSlab['grade'].unique().to_list()
     uniqueGradeSlabsInDB.sort()
-    # print(uniqueGradeSlabsInDB)
-    # 1/0
+
     # ---------------- PROCESS RECORDS ----------------
-    all_failed_records = []
-    BATCH_UPDATE_SIZE = 10  
+    all_failed_records = [] 
     processed = 0
-    # failed_batch_count = 0
     start = time.time()
 
     print(f'[Info] Using {BATCH_WORKERS} workers.')
@@ -628,7 +543,7 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
                         *DB_CRED
                     )
 
-        # ✅ FLUSH remaining records ONCE (outside loop)
+        # FLUSH remaining records ONCE (outside loop)
         remaining = processed % BATCH_UPDATE_SIZE
         if remaining:
             update_job_progress(
@@ -637,11 +552,10 @@ def process_excel(file_path: str, job_id: str) -> tuple[bool, pl.DataFrame]:
                 *DB_CRED
             )
 
-        # ✅ Mark job completed ONCE
+        # Mark job completed ONCE
         mark_job_completed(job_id, *DB_CRED)
 
     except Exception as e:
-        # ❗ VERY IMPORTANT
         mark_job_failed(job_id, *DB_CRED)
         raise   # re-raise so API knows something went wrong
 
